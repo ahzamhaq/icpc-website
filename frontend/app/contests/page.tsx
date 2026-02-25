@@ -278,7 +278,7 @@ export default function ContestsPage() {
 
         <hr className="border-border" />
 
-        {/* ── Platform Contests (clist.by) ── */}
+        {/* ── Platform Contests ── */}
         <section className="py-4">
           <p className="text-sm font-semibold text-foreground mb-3">
             &gt; platform contests <span className="font-normal text-muted-foreground">--upcoming</span>

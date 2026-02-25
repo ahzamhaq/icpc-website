@@ -1,4 +1,5 @@
 // Uses native fetch (Node 18+)
+import { logger } from "../utils/logger";
 
 export interface ExternalContest {
     name: string;
@@ -13,7 +14,7 @@ export interface ExternalContest {
 // In-memory cache
 let cache: ExternalContest[] = [];
 let cacheTimestamp = 0;
-const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 // Resource IDs on clist.by (verified from API)
 // Codeforces=1, CodeChef=2, HackerRank=63, LeetCode=102
@@ -46,7 +47,7 @@ export async function getExternalContests(): Promise<ExternalContest[]> {
     const apiKey = process.env.CLIST_API_KEY;
 
     if (!username || !apiKey) {
-        console.warn("CLIST_USERNAME or CLIST_API_KEY not set, skipping external contests");
+        logger.warn("CLIST_USERNAME or CLIST_API_KEY not set, skipping external contests");
         return [];
     }
 
@@ -69,15 +70,14 @@ export async function getExternalContests(): Promise<ExternalContest[]> {
         const response = await fetch(url, {
             headers: {
                 Authorization: `ApiKey ${username}:${apiKey}`,
-                "User-Agent": "Mozilla/5.0 (compatible; ICPC-USICT-Portal/1.0; +https://icpcusict.dev)",
+                "User-Agent": "ICPC-Website-App",
                 "Accept": "application/json",
-                "Accept-Language": "en-US,en;q=0.9",
             },
         });
 
         if (!response.ok) {
             const text = await response.text();
-            console.error(`clist.by API error ${response.status}: ${text}`);
+            logger.error({ status: response.status, body: text }, "clist.by API error");
             return cache;
         }
 
@@ -110,10 +110,10 @@ export async function getExternalContests(): Promise<ExternalContest[]> {
         });
 
         cacheTimestamp = now;
-        console.log(`Fetched ${cache.length} external contests from clist.by`);
+        logger.info({ count: cache.length }, "Fetched external contests from clist.by");
         return cache;
     } catch (err) {
-        console.error("Failed to fetch external contests:", err);
+        logger.error({ err }, "Failed to fetch external contests");
         return cache;
     }
 }

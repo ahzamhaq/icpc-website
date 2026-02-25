@@ -100,22 +100,6 @@ model Session {
   meetLink  String
 }
 
-model ExternalContest {
-  id           String   @id @default(cuid())
-  name         String
-  url          String
-  startTime    DateTime
-  endTime      DateTime
-  duration     Int      // seconds
-  platform     String
-  platformIcon String
-  resource     String   // clist.by resource host key
-  syncedAt     DateTime @default(now())
-
-  @@unique([url])
-  @@index([startTime])
-}
-
 model Blog {
   id              String     @id @default(cuid())
   authorId        String

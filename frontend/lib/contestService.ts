@@ -44,7 +44,7 @@ export async function getContestHistory(): Promise<Contest[]> {
   return response.data.data || response.data;
 }
 
-// External platform contests
+// External platform contests (clist.by)
 export interface ExternalContest {
   name: string;
   url: string;

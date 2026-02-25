@@ -108,11 +108,25 @@ export const selectRole = async (req: Request, res: Response) => {
     }
 
     const { role } = req.body;
-    
-    // Validate role
+
+    // Validate role — only STUDENT or ALUMNI allowed via this endpoint
     const validRoles = ["STUDENT", "ALUMNI"];
     if (!role || !validRoles.includes(role)) {
       return fail(res, "Invalid role. Must be one of: STUDENT, ALUMNI", 400);
+    }
+
+    // ⚠️ CRITICAL: Never downgrade an ADMIN via this endpoint
+    const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!currentUser) {
+      return fail(res, "User not found", 404);
+    }
+    if (currentUser.role === "ADMIN") {
+      // Admin is already set — just return their current token, don't touch the role
+      const token = googleAuthService.generateToken(currentUser.id, currentUser.role);
+      return success(res, {
+        user: { id: currentUser.id, email: currentUser.email, role: currentUser.role },
+        token,
+      });
     }
 
     // Update user role

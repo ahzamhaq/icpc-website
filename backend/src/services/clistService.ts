@@ -1,22 +1,26 @@
-// Uses native fetch (Node 18+)
+/**
+ * External contest sync service.
+ *
+ * Architecture:
+ *   Cron (every 6h) → fetchAndSync() → upsert into PostgreSQL
+ *   User request     → getFromDB()   → read from PostgreSQL
+ *
+ * No live CLIST calls during user requests.
+ */
+import prisma from "../models/prismaClient";
 import { logger } from "../utils/logger";
 
 export interface ExternalContest {
     name: string;
     url: string;
-    startTime: string; // ISO with Z suffix
-    endTime: string;   // ISO with Z suffix
+    startTime: string; // ISO
+    endTime: string;   // ISO
     duration: number;  // seconds
     platform: string;
     platformIcon: string;
 }
 
-// In-memory cache
-let cache: ExternalContest[] = [];
-let cacheTimestamp = 0;
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
-
-// Resource IDs on clist.by (verified from API)
+// Resource IDs on clist.by
 // Codeforces=1, CodeChef=2, HackerRank=63, LeetCode=102
 const RESOURCE_IDS = "1,2,63,102";
 
@@ -31,111 +35,141 @@ const PLATFORM_MAP: Record<string, { name: string; icon: string }> = {
 // Ensure clist timestamps (UTC without Z) are proper ISO strings
 function toUTCISO(dateStr: string): string {
     if (!dateStr) return dateStr;
-    // clist returns "2026-02-23T14:35:00" (UTC but no Z) — append Z
     return dateStr.endsWith("Z") ? dateStr : dateStr + "Z";
 }
 
-export async function getExternalContests(): Promise<ExternalContest[]> {
-    const now = Date.now();
-
-    // Return cache if fresh
-    if (cache.length > 0 && now - cacheTimestamp < CACHE_TTL) {
-        return cache;
-    }
-
+/**
+ * Cron job: fetch from CLIST API and upsert into PostgreSQL.
+ * Called every 6 hours + once at startup.
+ */
+export async function syncExternalContests(): Promise<void> {
     const username = process.env.CLIST_USERNAME;
     const apiKey = process.env.CLIST_API_KEY;
 
     if (!username || !apiKey) {
-        logger.warn("CLIST_USERNAME or CLIST_API_KEY not set, skipping external contests");
-        return [];
+        logger.warn("CLIST_USERNAME or CLIST_API_KEY not set, skipping sync");
+        return;
     }
 
-    // Build query params — credentials go ONLY in the Authorization header,
-    // never in the URL (prevents leakage in Cloudflare challenge pages).
-    const nowISO = new Date().toISOString().replace(/\.\d{3}Z$/, "");
+    try {
+        const nowISO = new Date().toISOString().replace(/\.\d{3}Z$/, "");
 
-    const params = new URLSearchParams({
-        upcoming: "true",
-        order_by: "start",
-        resource_id__in: RESOURCE_IDS,
-        start__gt: nowISO,
-        limit: "50",
-    });
+        // Credentials go ONLY in the Authorization header — never in the URL.
+        const params = new URLSearchParams({
+            upcoming: "true",
+            order_by: "start",
+            resource_id__in: RESOURCE_IDS,
+            start__gt: nowISO,
+            limit: "50",
+        });
 
-    const url = `https://clist.by/api/v4/contest/?${params.toString()}`;
+        const url = `https://clist.by/api/v4/contest/?${params.toString()}`;
 
-    const headers: Record<string, string> = {
-        Authorization: `ApiKey ${username}:${apiKey}`,
-        "User-Agent": "ICPC-Website-App",
-        Accept: "application/json",
-    };
+        const response = await fetch(url, {
+            headers: {
+                Authorization: `ApiKey ${username}:${apiKey}`,
+                "User-Agent": "ICPC-Website-App",
+                Accept: "application/json",
+            },
+        });
 
-    // Attempt fetch with one retry (Cloudflare sometimes clears after a short delay)
-    for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-            const response = await fetch(url, { headers });
+        if (response.status === 403) {
+            const text = await response.text();
+            const isCloudflare = text.includes("cf_chl") || text.includes("Just a moment");
+            logger.error(
+                { status: 403, cloudflare: isCloudflare },
+                "clist.by blocked — stale DB data preserved"
+            );
+            return; // stale DB data is fine
+        }
 
-            // Detect Cloudflare challenge (403 with HTML body)
-            if (response.status === 403) {
-                const text = await response.text();
-                const isCloudflare = text.includes("cf_chl") || text.includes("Just a moment");
+        if (!response.ok) {
+            const text = await response.text();
+            logger.error({ status: response.status, body: text.slice(0, 500) }, "clist.by API error");
+            return;
+        }
 
-                if (isCloudflare && attempt < 2) {
-                    logger.warn({ attempt }, "Cloudflare challenge on clist.by, retrying after delay");
-                    await new Promise((r) => setTimeout(r, 2000));
-                    continue;
-                }
+        const data = (await response.json()) as {
+            objects: Array<{
+                event: string;
+                href: string;
+                start: string;
+                end: string;
+                duration: number;
+                resource: string;
+            }>;
+        };
 
-                logger.error(
-                    { status: 403, cloudflare: isCloudflare, attempt },
-                    "clist.by blocked by Cloudflare — returning stale cache"
-                );
-                return cache; // return stale cache gracefully
-            }
+        const contests = data.objects || [];
 
-            if (!response.ok) {
-                const text = await response.text();
-                logger.error({ status: response.status, body: text.slice(0, 500) }, "clist.by API error");
-                return cache;
-            }
-
-            const data = (await response.json()) as {
-                objects: Array<{
-                    event: string;
-                    href: string;
-                    start: string;
-                    end: string;
-                    duration: number;
-                    resource: string;
-                }>;
+        // Upsert each contest (dedup by URL)
+        let synced = 0;
+        for (const c of contests) {
+            const platformInfo = PLATFORM_MAP[c.resource] || {
+                name: c.resource,
+                icon: c.resource.slice(0, 2).toUpperCase(),
             };
 
-            cache = (data.objects || []).map((c) => {
-                const platformInfo = PLATFORM_MAP[c.resource] || {
-                    name: c.resource,
-                    icon: c.resource.slice(0, 2).toUpperCase(),
-                };
-
-                return {
+            await prisma.externalContest.upsert({
+                where: { url: c.href },
+                update: {
                     name: c.event,
-                    url: c.href,
-                    startTime: toUTCISO(c.start),
-                    endTime: toUTCISO(c.end),
+                    startTime: new Date(toUTCISO(c.start)),
+                    endTime: new Date(toUTCISO(c.end)),
                     duration: c.duration,
                     platform: platformInfo.name,
                     platformIcon: platformInfo.icon,
-                };
+                    resource: c.resource,
+                    syncedAt: new Date(),
+                },
+                create: {
+                    name: c.event,
+                    url: c.href,
+                    startTime: new Date(toUTCISO(c.start)),
+                    endTime: new Date(toUTCISO(c.end)),
+                    duration: c.duration,
+                    platform: platformInfo.name,
+                    platformIcon: platformInfo.icon,
+                    resource: c.resource,
+                },
             });
-
-            cacheTimestamp = now;
-            logger.info({ count: cache.length }, "Fetched external contests from clist.by");
-            return cache;
-        } catch (err) {
-            logger.error({ err, attempt }, "Failed to fetch external contests");
-            if (attempt >= 2) return cache;
+            synced++;
         }
-    }
 
-    return cache;
+        // Clean up old contests that ended more than 7 days ago
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const deleted = await prisma.externalContest.deleteMany({
+            where: { endTime: { lt: sevenDaysAgo } },
+        });
+
+        logger.info(
+            { synced, cleaned: deleted.count },
+            "External contests synced to database"
+        );
+    } catch (err) {
+        logger.error({ err }, "Failed to sync external contests");
+    }
+}
+
+/**
+ * Read upcoming external contests from the database.
+ * Called by the API controller — no CLIST calls, pure DB read.
+ */
+export async function getExternalContestsFromDB(): Promise<ExternalContest[]> {
+    const now = new Date();
+
+    const rows = await prisma.externalContest.findMany({
+        where: { startTime: { gt: now } },
+        orderBy: { startTime: "asc" },
+    });
+
+    return rows.map((r) => ({
+        name: r.name,
+        url: r.url,
+        startTime: r.startTime.toISOString(),
+        endTime: r.endTime.toISOString(),
+        duration: r.duration,
+        platform: r.platform,
+        platformIcon: r.platformIcon,
+    }));
 }

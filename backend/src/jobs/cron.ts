@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { logger } from "../utils/logger";
+import { syncExternalContests } from "../services/clistService";
 
 let jobsStarted = false;
 
@@ -31,4 +32,19 @@ export const startJobs = () => {
       logger.error({ err }, "Leaderboard job error");
     }
   });
+
+  // External contest sync every 6 hours
+  cron.schedule("0 */6 * * *", async () => {
+    logger.info("Syncing external contests from CLIST...");
+    try {
+      await syncExternalContests();
+    } catch (err) {
+      logger.error({ err }, "External contest sync job error");
+    }
+  });
+
+  // Sync once at startup (non-blocking)
+  syncExternalContests().catch((err) =>
+    logger.error({ err }, "Startup external contest sync failed")
+  );
 };

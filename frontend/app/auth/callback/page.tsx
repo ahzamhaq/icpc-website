@@ -3,7 +3,7 @@
 import { useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
-import { getProfile } from "@/lib/profileService";
+import { getProfile, isProfileComplete } from "@/lib/profileService";
 
 function CallbackContent() {
   const router = useRouter();
@@ -29,14 +29,14 @@ function CallbackContent() {
       // Mirror the same profile check as the regular login page
       getProfile()
         .then((profile) => {
-          const profileExists = !!profile;
-          setHasProfile(profileExists);
-          router.push(profileExists ? "/dashboard" : "/profile");
+          const profileComplete = isProfileComplete(profile);
+          setHasProfile(profileComplete);
+          router.push(profileComplete ? "/dashboard" : "/profile");
         })
         .catch(() => {
-          // Existing users almost certainly have a profile; go to dashboard
-          setHasProfile(true);
-          router.push("/dashboard");
+          // Can't determine — send to profile page to be safe
+          setHasProfile(false);
+          router.push("/profile");
         });
     } else {
       // Brand-new Google user — needs to pick STUDENT / ALUMNI

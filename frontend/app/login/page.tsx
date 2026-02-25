@@ -9,7 +9,7 @@ import { useState } from "react";
 import { ModeToggle } from "@/components/mode-toggle";
 
 
-import { getProfile } from "@/lib/profileService";
+import { getProfile, isProfileComplete } from "@/lib/profileService";
 import {
   Form,
   FormControl,
@@ -51,10 +51,10 @@ export default function LoginPage() {
       const { user, token } = response.data.data;
       login(user, token);
 
-      // Check if profile exists and store result
+      // Check if profile is fully completed (not just a skeleton)
       try {
         const profile = await getProfile();
-        const profileExists = !!profile;
+        const profileExists = isProfileComplete(profile);
         setHasProfile(profileExists);
 
         if (!profileExists) {

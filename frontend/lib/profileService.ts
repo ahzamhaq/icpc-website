@@ -93,6 +93,21 @@ export async function getProfile(): Promise<Profile | null> {
   }
 }
 
+/**
+ * Returns true only when the profile has been genuinely filled out.
+ *
+ * Google OAuth creates a SKELETON profile immediately on first sign-in:
+ *   { name: "Display Name", branch: "", year: 1, contact: "" }
+ * That skeleton makes `!!profile` truthy even though the user never
+ * completed the form.  Checking branch (a required select field with
+ * no empty default) is the clean discriminant — it's always "" in the
+ * skeleton and always a real value ("CSE", "ECE", …) once saved.
+ */
+export function isProfileComplete(profile: Profile | null | undefined): boolean {
+  if (!profile) return false;
+  return !!profile.branch?.trim();
+}
+
 export async function updateProfile(data: ProfileInput): Promise<Profile> {
   const response = await api.post("/profile", data);
   return response.data.data || response.data;

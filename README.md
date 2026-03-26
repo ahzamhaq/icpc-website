@@ -36,24 +36,22 @@ ICPC Portal is designed to streamline competitive programming activities for stu
 
 ---
 
-## ✨ Features
-
-| Feature | Description |
-|---------|-------------|
-| 🔐 **Google OAuth** | Sign in with Google, admin approval workflow |
-| 🏅 **Contest System** | Real-time contests with code execution via Judge0 |
-| ✅ **Task Assignments** | DSA tasks with submission links, verification, points |
-| 📊 **Gamification** | Points, leaderboards (all-time, monthly, semester), badges |
-| 📅 **Session Management** | Workshop scheduling, registration, meeting links |
-| 📢 **Announcements** | Pinned announcements with CRUD operations |
-| 📝 **Blog System** | Rich-text posts (Tiptap) with admin approval workflow |
-| 🤖 **AI Chatbot** | Groq-powered coding assistant (LLaMA 3) |
-| 🎓 **Alumni Network** | Browse and connect with alumni profiles |
-| 👥 **User Roles** | Student, Admin, Alumni with role-based access |
-| 🌗 **Dark/Light Mode** | Full theme toggle with system preference support |
-| 📱 **Responsive Design** | Mobile-friendly dashboard with collapsible sidebar |
-| 💾 **Code Persistence** | Editor state saved during contests |
-
+✨ Features
+Feature	Description
+🔐 Google OAuth	Sign in with Google, admin approval workflow
+🏅 Contest System	Real-time contests with code execution via Judge0
+✅ Task Assignments	DSA tasks with submission links, verification, points
+📊 Gamification	Points, leaderboards (all-time, monthly, semester), badges
+📅 Session Management	Workshop scheduling, registration, meeting links
+📢 Announcements	Pinned announcements with CRUD operations
+📝 Blog System	Rich-text posts (Tiptap) with admin approval workflow
+🤖 AI Assistant	Groq-powered coding assistant (LLaMA 3) for problem-solving help
+📧 Email Notifications	Automatic Gmail alerts sent to users when new tasks are assigned
+🎓 Alumni Network	Browse and connect with alumni profiles
+👥 User Roles	Student, Admin, Alumni with role-based access
+🌗 Dark/Light Mode	Full theme toggle with system preference support
+📱 Responsive Design	Mobile-friendly dashboard with collapsible sidebar
+💾 Code Persistence	Editor state saved during contests
 ---
 
 ## 🛠️ Tech Stack
